@@ -1,23 +1,93 @@
 # lnar バグ・問題点一覧
 
-## 既知の問題
+最終更新: 2026-04-19
 
-### BUG-001: restart_analysis の S3 DeleteObject 権限エラー
+## 重大度定義
+- **Critical**: サービス提供に支障
+- **High**: 主要機能に影響
+- **Medium**: 回避策あり
+- **Low**: 軽微
+- **Info**: 改善提案
+
+---
+
+## BUG-001: restart_analysis の S3 DeleteObject 権限エラー
 - **重大度**: Medium
-- **再現手順**: restart_analysis を呼び出す
-- **エラー**: `AccessDenied: s3:DeleteObject action not authorized`
-- **影響**: 失敗した分析を再実行できない
+- **再現手順**: `restart_analysis` を呼び出す
+- **エラー**: `AccessDenied: s3:DeleteObject on lnar-artifacts-prod`
+- **原因**: `lnar-ecs-task-role` に `s3:DeleteObject` 権限がない
+- **影響**: 失敗した分析結果をクリアして再実行できない
+- **回避策**: `start_analysis` の再呼出しで新規分析として実行可能（冪等）
 - **発見日**: 2026-04-19
 
-### BUG-002: Run 失敗時に stdout/stderr が S3 に保存されない
+## BUG-002: Run失敗時にstdout/stderrがS3に保存されない
 - **重大度**: High
-- **再現手順**: experiment dict から dockerfile が null の状態で start_run → failed → S3 に NoSuchKey
-- **影響**: 失敗原因の調査が不可能
+- **再現手順**: Dockerfile生成に失敗する run を開始 → failed → S3で NoSuchKey
+- **影響**: 失敗原因の調査が不可能。デバッグ情報が完全に失われる
+- **発見リポジトリ**: sklearn, pytorch, kernel-methods
 - **発見日**: 2026-04-19
 
-### BUG-003: 分析済み実験の start_run で dockerfile が null になるケース
+## BUG-003: 不完全な experiment dict で start_run → Pydantic ValidationError
 - **重大度**: High
-- **再現手順**: get_analysis で取得した experiment を start_run に渡す → run_config に dockerfile: null → FAILED
-- **影響**: 以前成功していた実験が新しい run では失敗する
-- **備考**: 4/12 の run (01c14a50) では dockerfile が正常に生成されていた。4/19 の run (0dc004d4) では null
+- **再現手順**: get_analysis から取得せず、手動構築した experiment dict で start_run を呼出し → Pydantic ValidationError（description, inputs 等が欠如）
+- **影響**: run は `failed` になるが、Dockerfile も生成されずログも残らない
+- **回避策**: 必ず `get_analysis` の結果から experiment dict を取得して使用する
+- **備考**: MCP tool の description に「experiment dict は get_analysis から取得すべき」と明記されているが、バリデーションエラー時のフィードバックが不親切
 - **発見日**: 2026-04-19
+
+## BUG-004: xgboost 分析が初回 failed
+- **重大度**: Low
+- **再現手順**: test-xgboost-regression-example の start_analysis → "Analysis failed"（原因不明）
+- **影響**: リトライで成功するため実用上は軽微
+- **備考**: エラー詳細が "Analysis failed" のみで、根本原因が不明
+- **発見日**: 2026-04-19
+
+## BUG-005: get_run_logs の Redis Streams 保持期限後にログ消失
+- **重大度**: Info
+- **再現手順**: 完了から時間が経った run の get_run_logs → 空配列
+- **影響**: リアルタイムログの事後参照が不可能
+- **回避策**: presigned URL (stdout_url/stderr_url) でS3から取得（成功した run のみ）
+- **発見日**: 2026-04-19
+
+## BUG-006: 同一リポジトリ内で run 成功/失敗が不安定に混在
+- **重大度**: High
+- **再現手順**: kernel-methods の5実験を同時 start_run → 4/5 が failed (dockerfile null, ログなし), 1/5 が running
+- **影響**: 同じ分析結果から開始した run でも一部だけ Dockerfile 生成に失敗する非決定的挙動
+- **備考**: 同時に多数の run を開始した場合にDockerfile生成の競合が発生している可能性
+- **関連**: BUG-002（ログなし）
+- **発見リポジトリ**: kernel-methods (4/5 failed), pytorch (train_mnist全回failed)
+- **発見日**: 2026-04-19
+
+## BUG-007: 初回 run が異常に長時間 running のまま
+- **重大度**: Medium
+- **再現手順**: lightgbm の4実験を同時 start_run → 21分以上 running のまま。同じ実験のストレスtest duplicate は90秒で完了
+- **影響**: 初回Dockerイメージビルドが並列 run 間で競合し、一部 run が長時間ブロックされる
+- **備考**: ストレスtest duplicate が先に完了 → Dockerイメージがキャッシュ → 初回 run はキャッシュ前にビルド開始してスタック？
+- **発見リポジトリ**: lightgbm (初回4 run vs ストレスtest 2 run)
+- **発見日**: 2026-04-19
+
+## BUG-008: エッジケースリポジトリの分析で一律 "failed" を返す
+- **重大度**: Medium
+- **再現手順**: 有効なPythonスクリプトを含むリポジトリ (multi-lang, long-running) を分析 → failed
+- **期待動作**: 有効なPythonスクリプトがあれば分析は completed になり実験を検出すべき
+- **影響**: 一部の正常なリポジトリが分析できない
+- **詳細**:
+  - **empty-repo**: failed は妥当（Pythonファイルなし）
+  - **syntax-error**: failed は妥当（構文エラー）
+  - **no-deps**: failed — 依存関係がなくても分析は完了すべき
+  - **multi-lang**: failed — Python + R の混在リポで分析失敗
+  - **long-running**: failed — 有効なPythonスクリプト（signal.alarm使用）なのに失敗
+- **発見日**: 2026-04-19
+
+---
+
+## 統計
+
+| 重大度 | 件数 |
+|---|---|
+| Critical | 0 |
+| High | 3 (BUG-002, BUG-003, BUG-006) |
+| Medium | 3 (BUG-001, BUG-007, BUG-008) |
+| Low | 1 (BUG-004) |
+| Info | 1 (BUG-005) |
+| **合計** | **8** |
