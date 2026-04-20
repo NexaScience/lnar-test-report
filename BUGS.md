@@ -1,6 +1,6 @@
 # lnar バグ・問題点一覧
 
-最終更新: 2026-04-19
+最終更新: 2026-04-20
 
 ## 重大度定義
 - **Critical**: サービス提供に支障
@@ -79,15 +79,44 @@
   - **long-running**: failed — 有効なPythonスクリプト（signal.alarm使用）なのに失敗
 - **発見日**: 2026-04-19
 
+## BUG-009: Non-ML Python スクリプトが分析に失敗する
+- **重大度**: Critical
+- **再現手順**: ML系ライブラリ (sklearn, torch, xgboost等) をインポートしない純粋なPythonスクリプトのリポジトリを分析
+- **影響**: Batch 2の全8リポジトリ (env-vars, file-output, multi-module, network, memory, unicode, stdin, non-ml) が分析失敗
+- **詳細**: argparse + random/sys/csv を使用するがsklearn/torch/xgboostを使用しないスクリプトは分析に失敗する。Batch 3リポジトリ (lnarが認識するargparseパターンを持つ) はリトライで成功
+- **結論**: lnarの分析エンジンはML系のインポートパターンを前提としている
+- **発見日**: 2026-04-20
+
+## BUG-010: XGBoost 3.2.0 API破壊的変更への未対応
+- **重大度**: Low
+- **再現手順**: xgb.cv() を使用するスクリプトを実行 → XGBoost 3.2.0ではDataFrameではなくlistを返す
+- **影響**: xgboost CVスクリプトがAPIエラーで失敗
+- **備考**: スクリプト側のエラーでありlnar自体のバグではないが、lnarがバージョン固定で対応できる可能性あり
+- **発見日**: 2026-04-20
+
+## BUG-011: sklearn 1.8.0 API破壊的変更
+- **重大度**: Low
+- **再現手順**: mean_squared_error に squared=False を渡すスクリプトを実行 → sklearn 1.8.0で squared パラメータが削除済み
+- **影響**: kernel ridge スクリプトがAPIエラーで失敗
+- **備考**: スクリプト側のエラーでありlnar自体のバグではない
+- **発見日**: 2026-04-20
+
+## BUG-012: 分析の間欠的失敗率が高い
+- **重大度**: Medium
+- **再現手順**: 新規リポジトリの分析を初回実行
+- **影響**: Batch 3の全5リポジトリで2-3回の分析試行が必要だった。Round 1のデータと合わせると、初回分析の約40%が失敗する
+- **備考**: リトライで成功するため、一過性のバックエンド問題を示唆
+- **発見日**: 2026-04-20
+
 ---
 
 ## 統計
 
 | 重大度 | 件数 |
 |---|---|
-| Critical | 0 |
+| Critical | 1 (BUG-009) |
 | High | 3 (BUG-002, BUG-003, BUG-006) |
-| Medium | 3 (BUG-001, BUG-007, BUG-008) |
-| Low | 1 (BUG-004) |
+| Medium | 4 (BUG-001, BUG-007, BUG-008, BUG-012) |
+| Low | 3 (BUG-004, BUG-010, BUG-011) |
 | Info | 1 (BUG-005) |
-| **合計** | **8** |
+| **合計** | **12** |

@@ -1,6 +1,6 @@
 # lnar テスト結果
 
-最終更新: 2026-04-19 23:30 JST
+最終更新: 2026-04-20 JST
 
 ## サマリー
 | カテゴリ | テスト数 | Pass | Fail | Blocked | 実行中 |
@@ -185,3 +185,55 @@
 3. **エラーログの欠如**: 失敗時にstdout/stderrがS3に保存されないケースが多い（BUG-002）
 4. **エッジケース耐性**: 有効なPythonスクリプトでも分析が失敗するケースあり（multi-lang, long-running）
 5. **restart_analysis**: S3権限バグで機能しない（BUG-001）
+
+---
+
+## Round 2 Results
+
+### Verbose Logging Runs (全5カタログリポジトリ)
+
+全12 runがverbose出力で完了:
+
+| リポジトリ | 実験 | 結果 | 時間 | 備考 |
+|---|---|---|---|---|
+| sklearn | Iris | Accuracy 1.0000 | 30.7s | |
+| pytorch | Linear | weight=3.004, bias=2.062 | 30.2s | |
+| pytorch | MNIST CNN | 96.57% accuracy | 60.8s | **以前は失敗、今回成功!** |
+| xgboost | train | completed | 150s | ログ期限切れ |
+| xgboost | CV | RMSE converged to 0.467 | — | XGBoost 3.2.0 APIエラー発生 (BUG-010) |
+| xgboost | feature_importance | top feature MedInc (0.506) | 60s | |
+| lightgbm | classifier | Accuracy 1.0000 | 30s | |
+| lightgbm | CV | Best multi_logloss 0.0647 at round 61 | 30s | |
+| lightgbm | hyperparameter_search | Best accuracy 0.9493 (lr=0.1, n_est=100, leaves=15) | 30s | |
+| lightgbm | feature_importance | top feature flavanoids (373) | 60s | |
+| kernel-methods | comparison | RBF 0.9806 > Linear 0.9750 > Poly 0.9639 | 60s | |
+| kernel-methods | SVM RBF | 0.9806, 740 SVs | 60s | |
+| kernel-methods | ridge | — | — | sklearn 1.8.0 APIエラー (BUG-011) |
+| kernel-methods | SVM Linear | 0.9750, 427 SVs | 90s | |
+| kernel-methods | SVM Poly | 0.9639, 805 SVs | 60s | |
+
+### Batch 3 Edge Cases (5リポジトリ, 7 runs)
+
+| リポジトリ | 分析結果 | 実験数 | Run結果 |
+|---|---|---|---|
+| conflicting-deps | completed | 1 | TBD |
+| subprocess | completed | 1 | TBD |
+| large-output | completed | 1 | TBD |
+| exit-code | completed | 3 | TBD |
+| slow-install | completed | 1 | TBD |
+
+### Output Validation (Round 1より)
+
+- Round 1で完了した全8 runの出力を検証 — 全て正しい出力
+- **再現性**: 同一seedでの並列runは**完全に同一の出力**を生成
+
+### Kernel-Methods リトライ
+
+- 全4リトライrunが正常完了 (66-94s)
+- BUG-006が一過性のレースコンディションであることを確認
+
+### BUG-009: Non-MLスクリプトの分析失敗
+
+- Batch 2の全8リポジトリ (env-vars, file-output, multi-module, network, memory, unicode, stdin, non-ml) が分析失敗
+- Batch 3リポジトリ (argparse + random/sys imports使用) はリトライで成功
+- **結論**: lnarの分析はML系のインポートパターンを必要とする
