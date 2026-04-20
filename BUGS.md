@@ -108,15 +108,32 @@
 - **備考**: リトライで成功するため、一過性のバックエンド問題を示唆
 - **発見日**: 2026-04-20
 
+### BUG-013: lnar は非ゼロ終了コードをfailedとして検出しない
+- **重大度**: Critical
+- **再現手順**:
+  1. `sys.exit(1)` を含むスクリプトを実行 → run status = "completed"
+  2. 未処理の `RuntimeError` を含むスクリプトを実行 → run status = "completed"
+- **期待動作**: 非ゼロ終了コード → status = "failed"
+- **実際動作**: Docker コンテナ内のスクリプトがエラー終了しても "completed" と表示
+- **影響**: ユーザーはスクリプトが成功したと誤認する。失敗検出は Docker ビルド失敗のみ
+- **テスト結果**:
+  - `sys.exit(0)` → completed (正しい)
+  - `sys.exit(1)` → completed (誤り、should be failed)
+  - `raise RuntimeError` → completed (誤り、should be failed)
+  - pip install 失敗 → failed (正しい、ビルドフェーズ)
+- **追加観察**: Traceback は stderr ではなく stdout に出力された
+- **発見リポジトリ**: test-lnar-edge-exit-code
+- **発見日**: 2026-04-20
+
 ---
 
 ## 統計
 
 | 重大度 | 件数 |
 |---|---|
-| Critical | 1 (BUG-009) |
+| Critical | 2 (BUG-009, BUG-013) |
 | High | 3 (BUG-002, BUG-003, BUG-006) |
 | Medium | 4 (BUG-001, BUG-007, BUG-008, BUG-012) |
-| Low | 3 (BUG-004, BUG-010, BUG-011) |
-| Info | 1 (BUG-005) |
-| **合計** | **12** |
+| Low | 2 (BUG-010, BUG-011) |
+| Info | 2 (BUG-004, BUG-005) |
+| **合計** | **13** |

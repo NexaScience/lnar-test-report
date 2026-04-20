@@ -237,3 +237,26 @@
 - Batch 2の全8リポジトリ (env-vars, file-output, multi-module, network, memory, unicode, stdin, non-ml) が分析失敗
 - Batch 3リポジトリ (argparse + random/sys imports使用) はリトライで成功
 - **結論**: lnarの分析はML系のインポートパターンを必要とする
+
+### Batch 3 実行結果 (最終)
+
+| リポ | Run Status | Duration | 出力 | 評価 |
+|---|---|---|---|---|
+| conflicting-deps | **failed** | 213s | ログなし(ビルド失敗) | PASS — 依存関係エラーを正しく検出 |
+| subprocess | **completed** | 30s | child PID=6, exit=0 | PASS — zombie reaping 正常 |
+| large-output | **completed** | 90s | 10,000行全キャプチャ | PASS — 大量出力処理OK |
+| exit-code (success) | **completed** | 60s | "Success with seed=42" | PASS |
+| exit-code (error) | **completed** | 90s | "About to fail" | **FAIL — BUG-013** (should be failed) |
+| exit-code (exception) | **completed** | 90s | Traceback + RuntimeError | **FAIL — BUG-013** (should be failed) |
+| slow-install | **completed** | 30s | 出力なし | PARTIAL — pandas/matplotlib成功だが出力未キャプチャ |
+
+### 重大発見: BUG-013 — 非ゼロ終了コード非検出
+
+lnar は Docker コンテナ内のスクリプトの終了コードを判定に使用していない。
+`sys.exit(1)` も `raise RuntimeError` も "completed" として扱われる。
+"failed" になるのは Docker ビルド失敗（pip install エラー等）の場合のみ。
+
+これにより:
+- ユーザーはスクリプトエラーを見逃す
+- 自動化パイプラインで失敗を検知できない
+- 修正提案: コンテナの終了コードをチェックし、非ゼロなら "failed" にする
