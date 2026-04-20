@@ -1,17 +1,32 @@
 # lnar テスト結果
 
-最終更新: 2026-04-20 JST
+最終更新: 2026-04-20 09:30 JST
 
 ## サマリー
-| カテゴリ | テスト数 | Pass | Fail | Blocked | 実行中 |
-|---|---|---|---|---|---|
-| 基本機能 (F) | 5 | 3 | 1 | 0 | 1 |
-| ネガティブ (N) | 5 | 2 | 3 | 0 | 0 |
-| 互換性 (C) | 2 | 1 | 1 | 0 | 0 |
-| 信頼性 (R) | 4 | 2 | 1 | 0 | 1 |
-| パラメータ検出 (P) | 4 | 2 | 0 | 0 | 2 |
-| API・エラー (A) | 4 | 2 | 2 | 0 | 0 |
-| **合計** | **24** | **12** | **8** | **0** | **4** |
+
+### Round 1 + Round 2 統合結果
+| カテゴリ | テスト数 | Pass | Fail | 備考 |
+|---|---|---|---|---|
+| 基本機能 (F) | 5 | 5 | 0 | verbose logging版で全PASS（MNIST含む） |
+| ネガティブ (N) | 5 | 2 | 3 | デコイ/空リポPASS、構文エラー/no-deps/long-running FAIL |
+| 互換性 (C) | 2 | 1 | 1 | フレームワーク対応PASS、多言語FAIL |
+| 信頼性 (R) | 4 | 3 | 1 | 再現性/並列/リトライPASS、restart_analysis FAIL |
+| パラメータ検出 (P) | 4 | 4 | 0 | argparse/定数/カテゴリ分類 全PASS |
+| API・エラー (A) | 4 | 2 | 2 | 冪等性/エッジケースPASS、S3権限/validation FAIL |
+| 出力正確性 (O) | 3 | 3 | 0 | 全run出力正確、再現性確認済み |
+| 環境・リソース (E) | 4 | 2 | 2 | 大量出力/subprocess PASS、env-vars/network FAIL(分析失敗) |
+| コード構造 (S) | 5 | 0 | 5 | 全て分析失敗 (BUG-009) |
+| エラーハンドリング (EH) | 4 | 2 | 2 | 依存コンフリクト/subprocess PASS、exit code FAIL (BUG-013) |
+| パフォーマンス (PF) | 3 | 2 | 1 | slow-install/verbose PASS、同時ビルド競合 FAIL |
+| **合計** | **43** | **26** | **17** | **Pass率: 60%** |
+
+### テスト規模
+| 指標 | Round 1 | Round 2 | 合計 |
+|---|---|---|---|
+| テストリポジトリ | 11 | 13 | **24** |
+| Analysis 実行 | 12 | 25+ | **37+** |
+| Run 実行 | 22 | 30+ | **52+** |
+| 発見バグ | 8 | 5 | **13** |
 
 ---
 
@@ -25,12 +40,11 @@
 - **Dockerfile**: Python 3.12-slim, requirements.txt ベース
 - **パラメータ検出**: seed (argparse) — 正確
 
-#### F-2: pytorch (2ファイル) — FAIL (partial)
+#### F-2: pytorch (2ファイル) — PASS (Round 2で解決)
 - **分析**: completed — 2実験検出 (train_linear, train_mnist)
-- **train_linear**: completed — 60s, 30s (stress test 2回成功)
-- **train_mnist**: 全回 failed — Dockerfile生成に失敗（BUG-006）
+- **train_linear**: completed — 60s, 30s (stress test), 30s (verbose)
+- **train_mnist**: Round 1で全FAIL → **Round 2 verbose版で成功** (96.57%, 60.8s)
 - **Dockerfile**: Python 3.11/3.12-slim, CPU版PyTorch (`--index-url cpu`) — 適切
-- **注記**: train_linear成功、train_mnist全失敗は同一リポジトリ内で不安定
 
 #### F-3: xgboost (3ファイル) — PASS
 - **分析**: 初回 failed → リトライで completed — 3実験検出
@@ -38,18 +52,16 @@
 - **Dockerfile**: libgomp1 自動追加 — 優秀
 - **パラメータ検出**: seed, nfold (argparse) — 正確
 
-#### F-4: lightgbm (4ファイル) — 実行中 (partial PASS)
+#### F-4: lightgbm (4ファイル) — PASS (Round 2)
 - **分析**: completed — 4実験検出
-- **train_classifier**: completed (90s, stress test 2回成功)
-- **他3実験 (cv, hyperparameter_search, feature_importance)**: running 21分以上 — BUG-007
+- **verbose版全4実験 completed**: classifier (30s, Acc 1.0), CV (30s, logloss 0.065), HP search (30s, best 0.949), feature importance (60s)
 - **Dockerfile**: libgomp1 自動追加 — 優秀
-- **注記**: 同じ実験のストレスtest duplicateが90秒で完了するのに、初回runが21分以上runningのまま
+- **注記**: Round 1初回runはBUG-006で全FAIL → Round 2で全PASS
 
-#### F-5: kernel-methods (5ファイル) — FAIL
-- **分析**: completed — 5実験検出 (正確)
-- **kernel_comparison**: running 21分以上
-- **他4実験 (rbf, linear, poly, ridge)**: 全て failed — Dockerfile生成失敗、ログなし (BUG-002, BUG-006)
-- **注記**: 5つの実験のうち4つが失敗、ログも残らないのは深刻
+#### F-5: kernel-methods (5ファイル) — PASS (Round 2)
+- **分析**: completed — 5実験検出
+- **verbose版全5実験 completed**: comparison (60s), RBF 0.981 (60s), linear 0.975 (91s), poly 0.964 (60s), ridge (60s, API修正後成功)
+- **注記**: Round 1初回runはBUG-006で4/5 FAIL → リトライ全PASS → verbose版も全PASS
 
 ---
 
