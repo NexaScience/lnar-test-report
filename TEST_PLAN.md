@@ -62,3 +62,57 @@ lnar はGitHubリポジトリのコードをクラウド上で自動分析し、
 - コンピュートタイプ: cpu-general のみ（GPU不使用）
 - 分析時間: 3-5分/リポジトリ
 - 実行時間: 30秒〜数分（通常ケース）
+
+---
+
+## Round 2: 拡張テスト計画 (2026-04-20)
+
+Web調査とRound 1の知見に基づく追加テスト。
+
+### 7. 出力正確性テスト (Output Validation)
+- **O-1**: 完了した run の stdout 内容が期待値と一致するか検証
+- **O-2**: 同一seed の2 run で stdout が完全一致するか（再現性）
+- **O-3**: 数値出力の妥当性チェック（Accuracy 0-1, Loss > 0 等）
+
+### 8. 環境・リソーステスト (Environment & Resources)
+- **E-1**: 環境変数注入（set_env_var → コンテナ内で参照）
+- **E-2**: メモリ大量確保（100MB → コンテナ制限テスト）
+- **E-3**: 大量stdout出力（10,000行以上）
+- **E-4**: ネットワークアクセス（外部URLへのHTTPリクエスト）
+
+### 9. コード構造テスト (Code Structure)
+- **S-1**: 複数モジュールの相対import（utils/パッケージ構造）
+- **S-2**: ファイル出力（output/results.json への書き込み）
+- **S-3**: Unicode/日本語コード・出力
+- **S-4**: stdin要求スクリプト（input()使用 → タイムアウト期待）
+- **S-5**: 非MLスクリプト（データ処理ユーティリティ）
+
+### 10. エラーハンドリングテスト (Error Handling)
+- **EH-1**: 明示的 sys.exit(1) → failed + stderr
+- **EH-2**: 未処理例外（RuntimeError）→ failed + traceback in stderr
+- **EH-3**: 依存関係コンフリクト（numpy>=2.0 vs scipy==1.7.3）
+- **EH-4**: サブプロセス生成 + zombie reaping
+
+### 11. パフォーマンス・スケーラビリティテスト (Performance)
+- **PF-1**: 重い依存関係のインストール時間（pandas + matplotlib）
+- **PF-2**: 複数実験の同時実行時のDockerイメージビルド競合
+- **PF-3**: pull_repository → 再分析のワークフロー
+
+### Round 2 テスト対象リポジトリ一覧
+
+| ID | リポジトリ | テストカテゴリ | 検証ポイント |
+|---|---|---|---|
+| R12 | test-lnar-edge-env-vars | E-1 | 環境変数注入 |
+| R13 | test-lnar-edge-file-output | S-2 | ファイル出力 |
+| R14 | test-lnar-edge-multi-module | S-1 | 相対import |
+| R15 | test-lnar-edge-network-download | E-4 | ネットワークアクセス |
+| R16 | test-lnar-edge-memory-intensive | E-2 | メモリ制限 |
+| R17 | test-lnar-edge-unicode-paths | S-3 | Unicode対応 |
+| R18 | test-lnar-edge-stdin-required | S-4 | stdin処理 |
+| R19 | test-lnar-edge-non-ml-script | S-5 | 非ML検出 |
+| R20 | test-lnar-edge-conflicting-deps | EH-3 | 依存関係コンフリクト |
+| R21 | test-lnar-edge-subprocess | EH-4 | サブプロセス |
+| R22 | test-lnar-edge-large-output | E-3 | 大量出力 |
+| R23 | test-lnar-edge-exit-code | EH-1, EH-2 | 終了コード |
+| R24 | test-lnar-edge-slow-install | PF-1 | 重い依存関係 |
+| (既存) | 各完了run | O-1, O-2, O-3 | 出力検証 |
