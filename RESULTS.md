@@ -250,17 +250,75 @@
 - Batch 3リポジトリ (argparse + random/sys imports使用) はリトライで成功
 - **結論**: lnarの分析はML系のインポートパターンを必要とする
 
-### Batch 3 実行結果 (最終)
+### Batch 3 実行結果 (最終 — verbose logging 検証済み)
 
-| リポ | Run Status | Duration | 出力 | 評価 |
+全5リポジトリに verbose logging を追加し、再実行して動作確認済み。
+
+| リポ | Run Status | Duration | Verbose確認 | 出力内容 |
 |---|---|---|---|---|
-| conflicting-deps | **failed** | 213s | ログなし(ビルド失敗) | PASS — 依存関係エラーを正しく検出 |
-| subprocess | **completed** | 30s | child PID=6, exit=0 | PASS — zombie reaping 正常 |
-| large-output | **completed** | 90s | 10,000行全キャプチャ | PASS — 大量出力処理OK |
-| exit-code (success) | **completed** | 60s | "Success with seed=42" | PASS |
-| exit-code (error) | **completed** | 90s | "About to fail" | **FAIL — BUG-013** (should be failed) |
-| exit-code (exception) | **completed** | 90s | Traceback + RuntimeError | **FAIL — BUG-013** (should be failed) |
-| slow-install | **completed** | 30s | 出力なし | PARTIAL — pandas/matplotlib成功だが出力未キャプチャ |
+| subprocess | **completed** | 30s | [ENV][DEVICE][TEST][DONE] 全OK | Python 3.12.13, Linux, child PID=8, return=0, 5.01s |
+| large-output | **completed** | 64s | [ENV][DEVICE][TEST] 全OK | 10,000行生成確認、seed=42 |
+| exit-code (success) | **completed** | 90s | [ENV][DEVICE][TEST][DONE] 全OK | "Exiting with code 0" |
+| exit-code (error) | **completed** | 30s | ログ確認 | **BUG-013再確認**: sys.exit(1)でも completed |
+| exit-code (exception) | **completed** | 30s | [ENV][DEVICE][TEST][ERROR] 全OK | Traceback + RuntimeError キャプチャ済み、**BUG-013再確認** |
+| conflicting-deps | **failed** | - | N/A (ビルド失敗) | stdout なし — pip 依存コンフリクトで正しくfailed |
+| slow-install | **completed** | 30s | [ENV][DEVICE][DATA][DONE] 全OK | pandas 3.0.2, matplotlib 3.10.8, numpy 2.4.4 |
+
+#### Verbose Logging 検証詳細
+
+**subprocess** — ゾンビプロセス処理の詳細ログ確認:
+```
+[ENV] Python: 3.12.13, Platform: Linux-6.1.166-197.305.amzn2023.x86_64
+[DEVICE] CPU only (no ML frameworks)
+[TEST] Parent: spawned child PID 8
+[TEST] Parent: child returned 0 in 5.01s
+[RESULT] Subprocess test passed
+```
+
+**exit-code (exception)** — エラートレースバック出力確認:
+```
+[ENV] Python: 3.12.13
+[ERROR] About to raise RuntimeError
+Traceback (most recent call last):
+  File "/workspace/train_exception.py", line 21, in <module>
+    main()
+RuntimeError: Intentional error for testing
+```
+→ lnar は stdout にトレースバックをキャプチャするが、status は "completed" のまま (BUG-013)
+
+**slow-install** — 重い依存関係のバージョン確認:
+```
+[ENV] pandas: 3.0.2, matplotlib: 3.10.8, numpy: 2.4.4
+[ENV] Import time: 0.60s
+[RESULT] Mean x: -0.1038, Mean y: 0.0223
+```
+
+#### Verbose Logging 対応状況 (全リポジトリ)
+
+| # | リポジトリ | Verbose | 実行確認 | ログセクション |
+|---|---|---|---|---|
+| 1 | sklearn-iris | ✅ | ✅ 30.7s | ENV/DEVICE/DATA/SPLIT/TRAIN/EVAL/RESULT/DONE |
+| 2 | pytorch linear | ✅ | ✅ 30.2s | ENV/DEVICE/DATA/MODEL/TRAIN/RESULT/DONE |
+| 3 | pytorch MNIST | ✅ | ✅ 60.8s | ENV/DEVICE/DATA/MODEL/TRAIN/EVAL/DONE |
+| 4 | xgboost train | ✅ | ✅ 150s | ENV/DEVICE/DATA/SPLIT/TRAIN/EVAL/DONE |
+| 5 | xgboost CV | ✅ | ✅ 120s | ENV/DEVICE/DATA/TRAIN/RESULT/DONE |
+| 6 | xgboost feature | ✅ | ✅ 60s | ENV/DEVICE/DATA/TRAIN/RESULT/DONE |
+| 7 | lightgbm classifier | ✅ | ✅ 30s | ENV/DEVICE/DATA/SPLIT/TRAIN/EVAL/DONE |
+| 8 | lightgbm CV | ✅ | ✅ 30s | ENV/DEVICE/DATA/TRAIN/RESULT/DONE |
+| 9 | lightgbm HP search | ✅ | ✅ 30s | ENV/DEVICE/SEARCH/RESULT/DONE |
+| 10 | lightgbm feature | ✅ | ✅ 60s | ENV/DEVICE/DATA/TRAIN/RESULT/DONE |
+| 11 | kernel comparison | ✅ | ✅ 60s | ENV/DEVICE/DATA/COMPARE/TRAIN/EVAL/RESULT/DONE |
+| 12 | kernel SVM RBF | ✅ | ✅ 60s | ENV/DEVICE/DATA/SPLIT/TRAIN/EVAL/DONE |
+| 13 | kernel ridge | ✅ | ✅ 60s | ENV/DEVICE/DATA/SPLIT/TRAIN/EVAL/DONE |
+| 14 | kernel SVM linear | ✅ | ✅ 91s | ENV/DEVICE/DATA/TRAIN/EVAL/DONE |
+| 15 | kernel SVM poly | ✅ | ✅ 60s | ENV/DEVICE/DATA/TRAIN/EVAL/DONE |
+| 16 | subprocess | ✅ | ✅ 30s | ENV/DEVICE/TEST/RESULT/DONE |
+| 17 | large-output | ✅ | ✅ 64s | ENV/DEVICE/TEST/RESULT/DONE |
+| 18 | exit-code success | ✅ | ✅ 90s | ENV/DEVICE/TEST/RESULT/DONE |
+| 19 | exit-code error | ✅ | ✅ 30s | ENV/DEVICE/TEST/ERROR |
+| 20 | exit-code exception | ✅ | ✅ 30s | ENV/DEVICE/TEST/ERROR + Traceback |
+| 21 | conflicting-deps | ✅ | ✅ failed | (Docker build失敗、stdout なし) |
+| 22 | slow-install | ✅ | ✅ 30s | ENV/DEVICE/DATA/RESULT/DONE |
 
 ### 重大発見: BUG-013 — 非ゼロ終了コード非検出
 
